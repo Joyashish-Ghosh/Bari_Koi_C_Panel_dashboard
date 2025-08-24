@@ -11,7 +11,7 @@ import "./index.css";
 // import About from "./Components/Pages/About.jsx";
 // import DashboardHome from "./Components/Dashboard/DashboardHome.jsx";
 import CRUD from "./Components/Pages/CRUD.jsx";
-import Main from "./Components/main.jsx";
+import Main from "./Components/Main.jsx";
 import DashboardPage from "./Components/Pages/DashboardPage.jsx";
 import Home from "./Components/Pages/Home.jsx";
 const router = createBrowserRouter([
