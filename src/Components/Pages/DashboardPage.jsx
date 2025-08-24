@@ -209,7 +209,8 @@ const DashboardPage = () => {
       }
 
       // 2️⃣ Service-wise totals (for table)
-        let grandTotal = 0;
+      let grandTotal = 0;
+      let totalForSelected = 0;
       for (const service of services) {
         const resService = await axios.get(
           "https://api.digigo.sbusiness.xyz/tracking-api/geo-location/v1/logs/data",
@@ -227,14 +228,23 @@ const DashboardPage = () => {
         );
 
         const serviceTotal = resService.data?.data?.total ?? 0;
-grandTotal += serviceTotal;
+        grandTotal += serviceTotal;
+        if (service === selectedService) {
+          totalForSelected = serviceTotal;
+        }
         setApiData((prev) =>
           prev.map((item) =>
             item.api === service ? { ...item, usage: serviceTotal } : item
           )
         );
       }
-          setTotalCount(grandTotal);
+      // If "All Services" is selected (tracking_services), show aggregated sum.
+      // Otherwise, show the selected service total so it matches the usage table.
+      if (selectedService === "tracking_services") {
+        setTotalCount(grandTotal);
+      } else {
+        setTotalCount(totalForSelected);
+      }
 
     } catch (error) {
       console.error("Error fetching API data:", error);
