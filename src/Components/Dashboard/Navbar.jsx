@@ -12,7 +12,7 @@ const Navbar = () => {
           {/* <Link to="/employees" className="hover:underline">Employees</Link> */}
           {/* <Link to="/about" className="hover:underline">About</Link> */} 
           {/* <Link to="/crud" className="hover:underline">CRUD</Link> */}
-          <Link to="/Home" className="hover:underline">Home</Link>
+          <Link to="/home" className="hover:underline">Home</Link>
         </div>
       </div>
     </nav>
