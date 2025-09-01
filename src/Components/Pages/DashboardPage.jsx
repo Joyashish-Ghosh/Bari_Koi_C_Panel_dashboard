@@ -22,6 +22,7 @@ const DashboardPage = () => {
   const [loading, setLoading] = useState(false);
   const [logData, setLogData] = useState([]);
   const [salesData, setSalesData] = useState([]);
+  const [dailyData, setDailyData] = useState([]);
   const [page, setPage] = useState(0);
   const [limit, setLimit] = useState(100);
   const [selectedService, setSelectedService] = useState("tracking_services");
@@ -38,19 +39,28 @@ const DashboardPage = () => {
     { sl: 4, api: "from_web", usage: 0 },
     { sl: 5, api: "tracking_services", usage: 0 },
   ]);
+  const [serviceUsageData, setServiceUsageData] = useState([...apiData]);
 
-  const services = [
+  // Service keys: keep a base list for real services, and a UI list including the 'all' label
+  const baseServices = [
     "from_visit",
     "from_attendance",
     "from_tracking",
     "from_web",
-    "tracking_services",
   ];
+  const services = [...baseServices, "tracking_services"];
   // Derived logs for current filter
   const filteredLogs = logData.filter((item) => {
     if (!filterService) return true;
     return item.service_name === filterService;
   });
+  
+  // Get the usage count for the currently filtered service
+  const getFilteredServiceCount = () => {
+    if (!filterService) return totalCount;
+    const service = serviceUsageData.find(s => s.api === filterService);
+    return service ? service.usage : 0;
+  };
   const sortedLogs = [...filteredLogs].sort((a, b) => {
     const dir = sortDir === "asc" ? 1 : -1;
     const val = (key, obj) => {
@@ -79,6 +89,8 @@ const DashboardPage = () => {
       setSortKey(key);
       setSortDir("asc");
     }
+    // reset to first page when sorting changes
+    setPage(0);
   };
 
   const toggleExpand = (id) => {
@@ -137,7 +149,9 @@ const DashboardPage = () => {
     setExpanded(new Set());
     setSortKey("id");
     setSortDir("desc");
-    setApiData((prev) => prev.map((item) => ({ ...item, usage: 0 })));
+    const resetData = apiData.map(item => ({ ...item, usage: 0 }));
+    setApiData(resetData);
+    setServiceUsageData(resetData);
   };
   const handleSearch = async () => {
     if (!startDate || !endDate) {
@@ -150,76 +164,25 @@ const DashboardPage = () => {
     setLogData([]);
     setSalesData([]);
     setApiData((prev) => prev.map((item) => ({ ...item, usage: 0 })));
+    setPage(0);
 
     try {
-      // 1️⃣ Master total + logs
-      const res = await axios.get(
-        "https://api.digigo.sbusiness.xyz/tracking-api/geo-location/v1/logs/data",
-        {
-          params: {
-            business_id: "",
-            business_member_id: "",
-            skip: page * limit,
-            limit: limit,
-            service_name: selectedService,
-            from_date: startDate,
-            to_date: endDate,
-          },
-        }
-      );
+      // We'll compute service-wise totals first to know accurate totals
 
-      if (res.data?.issuccess && res.data.data?.data) {
-        const logs = res.data.data.data;
-        const total = res.data.data.total;
-
-        setTotalCount(total);
-        setLogData(logs);
-
-        // Monthly aggregation
-        const monthMap = {};
-        const monthNames = [
-          "Jan",
-          "Feb",
-          "Mar",
-          "Apr",
-          "May",
-          "Jun",
-          "Jul",
-          "Aug",
-          "Sep",
-          "Oct",
-          "Nov",
-          "Dec",
-        ];
-        monthNames.forEach((m) => (monthMap[m] = 0));
-        logs.forEach((log) => {
-          const monthIndex = new Date(log.created_at).getMonth();
-          monthMap[monthNames[monthIndex]] += 1;
-        });
-        const monthlySales = monthNames.map((m) => ({
-          month: m,
-          sales: monthMap[m],
-          total,
-        }));
-        setSalesData(monthlySales);
-      } else {
-        setTotalCount(0);
-        setLogData([]);
-        setSalesData([]);
-      }
-
-      // 2️⃣ Service-wise totals (for table)
+          // 2️⃣ Service-wise totals (for table)
       let grandTotal = 0;
       let totalForSelected = 0;
-      for (const service of services) {
+      const updatedServiceData = [];
+      
+      for (const service of baseServices) {
         const resService = await axios.get(
           "https://api.digigo.sbusiness.xyz/tracking-api/geo-location/v1/logs/data",
           {
             params: {
               business_id: "",
               business_member_id: "",
-              skip: page * limit,
-              limit: limit,
+              skip: 0,  // Always get total count from first page
+              limit: 1, // We only need the total count
               service_name: service,
               from_date: startDate,
               to_date: endDate,
@@ -229,21 +192,159 @@ const DashboardPage = () => {
 
         const serviceTotal = resService.data?.data?.total ?? 0;
         grandTotal += serviceTotal;
+        
         if (service === selectedService) {
           totalForSelected = serviceTotal;
         }
-        setApiData((prev) =>
-          prev.map((item) =>
-            item.api === service ? { ...item, usage: serviceTotal } : item
-          )
-        );
+        
+        updatedServiceData.push({
+          sl: service === "from_visit" ? 1 : 
+              service === "from_attendance" ? 2 :
+              service === "from_tracking" ? 3 :
+              service === "from_web" ? 4 : 0,
+          api: service,
+          usage: serviceTotal
+        });
       }
-      // If "All Services" is selected (tracking_services), show aggregated sum.
-      // Otherwise, show the selected service total so it matches the usage table.
-      if (selectedService === "tracking_services") {
-        setTotalCount(grandTotal);
+      // add aggregated row for tracking_services (All Services)
+      updatedServiceData.push({ sl: 5, api: "tracking_services", usage: grandTotal });
+      
+      // Update both apiData and serviceUsageData
+      setApiData(updatedServiceData);
+      setServiceUsageData(updatedServiceData);
+
+      // Now fetch ALL logs for the currently selected service (or all)
+      const fetchService = selectedService;
+      const targetTotal = fetchService === "tracking_services" ? grandTotal : totalForSelected;
+      const pageSize = 100; // backend supports up to 100 per call
+      let allLogs = [];
+      if (targetTotal > 0) {
+        if (fetchService === "tracking_services") {
+          // Fetch all services logs by iterating each service and paginating
+          for (const svc of baseServices) {
+            let skipCursor = 0;
+            let collectedForSvc = 0;
+            while (collectedForSvc < (updatedServiceData.find(x => x.api === svc)?.usage || 0)) {
+              const resLogs = await axios.get(
+                "https://api.digigo.sbusiness.xyz/tracking-api/geo-location/v1/logs/data",
+                {
+                  params: {
+                    business_id: "",
+                    business_member_id: "",
+                    skip: skipCursor,
+                    limit: pageSize,
+                    service_name: svc,
+                    from_date: startDate,
+                    to_date: endDate,
+                  },
+                }
+              );
+              const chunk = resLogs.data?.data?.data ?? [];
+              allLogs = allLogs.concat(chunk);
+              if (chunk.length === 0) break;
+              collectedForSvc += chunk.length;
+              skipCursor += chunk.length;
+            }
+          }
+        } else {
+          // Fetch only the selected service across all pages
+          let skipCursor = 0;
+          let collected = 0;
+          while (collected < targetTotal) {
+            const resLogs = await axios.get(
+              "https://api.digigo.sbusiness.xyz/tracking-api/geo-location/v1/logs/data",
+              {
+                params: {
+                  business_id: "",
+                  business_member_id: "",
+                  skip: skipCursor,
+                  limit: pageSize,
+                  service_name: fetchService,
+                  from_date: startDate,
+                  to_date: endDate,
+                },
+              }
+            );
+            const chunk = resLogs.data?.data?.data ?? [];
+            allLogs = allLogs.concat(chunk);
+            if (chunk.length === 0) break;
+            collected += chunk.length;
+            skipCursor += chunk.length;
+          }
+        }
+      }
+
+      // Update table logs
+      setLogData(allLogs);
+
+      // Build monthly aggregation for existing chart
+      const monthMap = {};
+      const monthNames = [
+        "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"
+      ];
+      monthNames.forEach((m) => (monthMap[m] = 0));
+      allLogs.forEach((log) => {
+        const monthIndex = new Date(log.created_at).getMonth();
+        monthMap[monthNames[monthIndex]] += 1;
+      });
+      const monthlySales = monthNames.map((m) => ({ month: m, sales: monthMap[m] }));
+      setSalesData(monthlySales);
+
+      // Build day-wise aggregation for new chart (local date, service-aware)
+      const dayMap = {};
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      start.setHours(0,0,0,0);
+      end.setHours(23,59,59,999);
+      const toKey = (d) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      };
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        dayMap[toKey(d)] = 0;
+      }
+      const includeLog = (log) => {
+        if (fetchService === 'tracking_services') return true;
+        return log.service_name === fetchService;
+      };
+      allLogs.forEach((log) => {
+        if (!includeLog(log)) return;
+        const dt = new Date(log.created_at);
+        if (dt < start || dt > end) return; // safety
+        const key = toKey(dt);
+        if (dayMap[key] !== undefined) dayMap[key] += 1;
+      });
+      const daily = Object.keys(dayMap).map((day) => ({ day, count: dayMap[day] }));
+      setDailyData(daily);
+
+      // Reconcile totals with actually fetched logs to avoid mismatch
+      if (fetchService === "tracking_services") {
+        const byService = {};
+        for (const svc of baseServices) byService[svc] = 0;
+        allLogs.forEach((l) => { if (byService[l.service_name] !== undefined) byService[l.service_name] += 1; });
+        const reconciled = baseServices.map((svc) => ({
+          sl: svc === "from_visit" ? 1 : svc === "from_attendance" ? 2 : svc === "from_tracking" ? 3 : 4,
+          api: svc,
+          usage: byService[svc],
+        }));
+        const sum = reconciled.reduce((a, b) => a + b.usage, 0);
+        const finalData = [...reconciled, { sl: 5, api: "tracking_services", usage: sum }];
+        setApiData(finalData);
+        setServiceUsageData(finalData);
+        setTotalCount(sum);
       } else {
-        setTotalCount(totalForSelected);
+        // Specific service selected
+        const actual = allLogs.length;
+        if (actual !== totalForSelected) {
+          const fixed = serviceUsageData.map((r) => r.api === fetchService ? { ...r, usage: actual } : r);
+          setApiData(fixed);
+          setServiceUsageData(fixed);
+          setTotalCount(actual);
+        } else {
+          setTotalCount(totalForSelected);
+        }
       }
 
     } catch (error) {
@@ -256,12 +357,12 @@ const DashboardPage = () => {
       setLoading(false);
     }
   };
-  // Add useEffect for page change
+  // Refetch only when service changes (page/limit are client-side only)
   React.useEffect(() => {
     if (startDate && endDate) {
       handleSearch();
     }
-  }, [page, selectedService, limit]);
+  }, [selectedService]);
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -380,7 +481,7 @@ const DashboardPage = () => {
               </tr>
             </thead>
             <tbody>
-              {apiData.map((row, idx) => (
+              {apiData.filter(r => r.api !== 'tracking_services').map((row, idx) => (
                 <tr
                   key={row.sl}
                   className={`transition duration-200 hover:bg-indigo-50 ${
@@ -402,6 +503,7 @@ const DashboardPage = () => {
 
         {/* 4️⃣ CHARTS & ACTIVITY */}
 
+        <h4 className="text-lg font-semibold text-slate-800 mb-2">Monthly API Hits</h4>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart
             data={salesData.map((entry) => {
@@ -455,10 +557,37 @@ const DashboardPage = () => {
           </BarChart>
         </ResponsiveContainer>
 
-        {logData.length > 0 && (
+        {/* Daily hits chart for the filtered date range */}
+        {dailyData.length > 0 && (
+          <div className="mt-8">
+            <h4 className="text-lg font-semibold text-slate-800 mb-2">Daily API Hits (Filtered Range)</h4>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={dailyData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="day" tick={{ fontSize: 12 }} angle={-30} textAnchor="end" height={60} />
+                <YAxis />
+                <Tooltip formatter={(value) => [value, 'Hits']} labelFormatter={(label) => `Date: ${label}`} />
+                <Bar dataKey="count" name="Hits per day" fill="#38bdf8" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {totalCount !== null && (
           <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mt-8">
             <h4 className="text-xl font-bold mb-1 text-slate-800">API Hit Logs</h4>
             <p className="text-sm text-slate-500 mb-4">Detailed request activity. Use the filter to narrow by service.</p>
+
+            {/* Diagnostics: counts to verify correctness */}
+            <div className="mb-3 text-xs text-slate-600 flex flex-wrap gap-3">
+              <span className="px-2 py-1 rounded bg-slate-100 border border-slate-200">Loaded: {logData.length}</span>
+              <span className="px-2 py-1 rounded bg-slate-100 border border-slate-200">Filtered: {sortedLogs.length}</span>
+              <span className="px-2 py-1 rounded bg-slate-100 border border-slate-200">Usage (table): {(() => {
+                const key = filterService || (selectedService === 'tracking_services' ? 'tracking_services' : selectedService);
+                const row = serviceUsageData.find(r => r.api === key);
+                return row ? row.usage : 0;
+              })()}</span>
+            </div>
 
             {/* 🔹 Dropdown Filter */}
             <div className="mb-4 flex items-center gap-4">
@@ -499,6 +628,7 @@ const DashboardPage = () => {
                 <table className="min-w-full text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#070742] to-[#13137a] text-white">
                     <tr>
+                      <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">SL</th>
                       <th onClick={() => toggleSort('id')} className="px-4 py-3 text-xs font-semibold uppercase tracking-wide cursor-pointer select-none">
                         ID {sortKey==='id' && (sortDir==='asc' ? '▲' : '▼')}
                       </th>
@@ -518,7 +648,9 @@ const DashboardPage = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {sortedLogs.map((item) => {
+                    {sortedLogs
+                      .slice(page * limit, (page + 1) * limit)
+                      .map((item, idx) => {
                       let parsedLog = {};
                       try { parsedLog = JSON.parse(item.log || "{}"); } catch {}
                       const address = parsedLog.address || "N/A";
@@ -526,6 +658,11 @@ const DashboardPage = () => {
                       return (
                         <React.Fragment key={item.id}>
                           <tr className="even:bg-slate-50 transition hover:bg-indigo-50">
+                            <td className="px-4 py-3 align-top">
+                              <span className="font-mono text-xs bg-slate-100 rounded px-2 py-1 border border-slate-200 text-slate-700">
+                                {page * limit + idx + 1}
+                              </span>
+                            </td>
                             <td className="px-4 py-3 align-top">
                               <span className="font-mono text-xs bg-slate-100 rounded px-2 py-1 border border-slate-200 text-slate-700">
                                 {item.id}
@@ -581,8 +718,8 @@ const DashboardPage = () => {
           </div>
         )}
 
-        {/* Pagination Controls */}
-        {totalCount > 0 && (
+        {/* Pagination Controls (client-side over filtered logs) */}
+        {sortedLogs.length > 0 && (
           <div className="flex flex-wrap justify-between items-center gap-4 mt-4">
             <div className="flex items-center gap-2">
               <label className="text-sm text-slate-600">Rows per page:</label>
@@ -605,10 +742,10 @@ const DashboardPage = () => {
                 Prev
               </button>
               <span className="text-[#0a0a5b] font-semibold">
-                Page {page + 1} of {Math.ceil(totalCount / limit)}
+                Page {page + 1} of {Math.ceil(sortedLogs.length / limit) || 1}
               </span>
               <button
-                disabled={(page + 1) * limit >= totalCount}
+                disabled={(page + 1) * limit >= sortedLogs.length}
                 onClick={() => setPage(page + 1)}
                 className="px-5 py-1 bg-[#13137a] text-white rounded hover:bg-[#0a0a5b] disabled:opacity-50"
               >
