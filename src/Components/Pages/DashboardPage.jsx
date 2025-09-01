@@ -89,7 +89,7 @@ const DashboardPage = () => {
       setSortKey(key);
       setSortDir("asc");
     }
-    // reset to first page when sorting changes
+    // reset to first page when sorting changes — Changed by Mir Javed Jahanger
     setPage(0);
   };
 
@@ -220,18 +220,20 @@ const DashboardPage = () => {
       let allLogs = [];
       if (targetTotal > 0) {
         if (fetchService === "tracking_services") {
-          // Fetch all services logs by iterating each service and paginating
+          // Fetch all services logs by iterating each service and paginating (in parallel per page)
           for (const svc of baseServices) {
-            let skipCursor = 0;
-            let collectedForSvc = 0;
-            while (collectedForSvc < (updatedServiceData.find(x => x.api === svc)?.usage || 0)) {
-              const resLogs = await axios.get(
+            const svcTotal = (updatedServiceData.find(x => x.api === svc)?.usage || 0);
+            if (svcTotal === 0) continue;
+            const pages = Math.ceil(svcTotal / pageSize);
+            const requests = Array.from({ length: pages }, (_, i) => {
+              const skip = i * pageSize;
+              return axios.get(
                 "https://api.digigo.sbusiness.xyz/tracking-api/geo-location/v1/logs/data",
                 {
                   params: {
                     business_id: "",
                     business_member_id: "",
-                    skip: skipCursor,
+                    skip,
                     limit: pageSize,
                     service_name: svc,
                     from_date: startDate,
@@ -239,25 +241,25 @@ const DashboardPage = () => {
                   },
                 }
               );
-              const chunk = resLogs.data?.data?.data ?? [];
+            });
+            const responses = await Promise.all(requests);
+            for (const res of responses) {
+              const chunk = res.data?.data?.data ?? [];
               allLogs = allLogs.concat(chunk);
-              if (chunk.length === 0) break;
-              collectedForSvc += chunk.length;
-              skipCursor += chunk.length;
             }
           }
         } else {
-          // Fetch only the selected service across all pages
-          let skipCursor = 0;
-          let collected = 0;
-          while (collected < targetTotal) {
-            const resLogs = await axios.get(
+          // Fetch only the selected service across all pages (parallel per page)
+          const pages = Math.ceil(targetTotal / pageSize);
+          const requests = Array.from({ length: pages }, (_, i) => {
+            const skip = i * pageSize;
+            return axios.get(
               "https://api.digigo.sbusiness.xyz/tracking-api/geo-location/v1/logs/data",
               {
                 params: {
                   business_id: "",
                   business_member_id: "",
-                  skip: skipCursor,
+                  skip,
                   limit: pageSize,
                   service_name: fetchService,
                   from_date: startDate,
@@ -265,11 +267,11 @@ const DashboardPage = () => {
                 },
               }
             );
-            const chunk = resLogs.data?.data?.data ?? [];
+          });
+          const responses = await Promise.all(requests);
+          for (const res of responses) {
+            const chunk = res.data?.data?.data ?? [];
             allLogs = allLogs.concat(chunk);
-            if (chunk.length === 0) break;
-            collected += chunk.length;
-            skipCursor += chunk.length;
           }
         }
       }
@@ -358,6 +360,7 @@ const DashboardPage = () => {
     }
   };
   // Refetch only when service changes (page/limit are client-side only)
+  // Changed by Mir Javed Jahanger: avoid refetch on page/limit to speed up UI
   React.useEffect(() => {
     if (startDate && endDate) {
       handleSearch();
@@ -481,7 +484,7 @@ const DashboardPage = () => {
               </tr>
             </thead>
             <tbody>
-              {apiData.filter(r => r.api !== 'tracking_services').map((row, idx) => (
+              {apiData.map((row, idx) => (
                 <tr
                   key={row.sl}
                   className={`transition duration-200 hover:bg-indigo-50 ${
@@ -503,6 +506,7 @@ const DashboardPage = () => {
 
         {/* 4️⃣ CHARTS & ACTIVITY */}
 
+        {/* Changed by Mir Javed Jahanger: Added title for month-wise chart */}
         <h4 className="text-lg font-semibold text-slate-800 mb-2">Monthly API Hits</h4>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart
@@ -557,7 +561,7 @@ const DashboardPage = () => {
           </BarChart>
         </ResponsiveContainer>
 
-        {/* Daily hits chart for the filtered date range */}
+        {/* Daily hits chart for the filtered date range — Added by Mir Javed Jahanger */}
         {dailyData.length > 0 && (
           <div className="mt-8">
             <h4 className="text-lg font-semibold text-slate-800 mb-2">Daily API Hits (Filtered Range)</h4>
@@ -567,12 +571,14 @@ const DashboardPage = () => {
                 <XAxis dataKey="day" tick={{ fontSize: 12 }} angle={-30} textAnchor="end" height={60} />
                 <YAxis />
                 <Tooltip formatter={(value) => [value, 'Hits']} labelFormatter={(label) => `Date: ${label}`} />
-                <Bar dataKey="count" name="Hits per day" fill="#38bdf8" />
+                {/* Changed by Mir Javed Jahanger: Match monthly chart color */}
+                <Bar dataKey="count" name="Hits per day" fill="#0a0a5b" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         )}
 
+        {/* Changed by Mir Javed Jahanger: Always show logs section after a search (even 0 rows) */}
         {totalCount !== null && (
           <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mt-8">
             <h4 className="text-xl font-bold mb-1 text-slate-800">API Hit Logs</h4>
@@ -648,6 +654,7 @@ const DashboardPage = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
+                    {/* Changed by Mir Javed Jahanger: Client-side pagination slice */}
                     {sortedLogs
                       .slice(page * limit, (page + 1) * limit)
                       .map((item, idx) => {
@@ -660,7 +667,7 @@ const DashboardPage = () => {
                           <tr className="even:bg-slate-50 transition hover:bg-indigo-50">
                             <td className="px-4 py-3 align-top">
                               <span className="font-mono text-xs bg-slate-100 rounded px-2 py-1 border border-slate-200 text-slate-700">
-                                {page * limit + idx + 1}
+                                {page * limit + idx + 1} {/* SL — Changed by Mir Javed Jahanger */}
                               </span>
                             </td>
                             <td className="px-4 py-3 align-top">
