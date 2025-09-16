@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 
 import { Bars3Icon } from "@heroicons/react/24/outline";
@@ -16,8 +16,24 @@ import {
 const DashboardPage = () => {
   const [open, setOpen] = useState(false);
 
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  // Format date as YYYY-MM-DD
+  const formatDate = (date) => {
+    if (!date) return '';
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return ''; // handle invalid dates
+    
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}`;
+  };
+
+  const today = new Date();
+  const todayFormatted = formatDate(today);
+
+  const [startDate, setStartDate] = useState(todayFormatted);
+  const [endDate, setEndDate] = useState(todayFormatted);
   const [totalCount, setTotalCount] = useState(null);
   const [loading, setLoading] = useState(false);
   const [logData, setLogData] = useState([]);
@@ -31,6 +47,13 @@ const DashboardPage = () => {
   const [expanded, setExpanded] = useState(new Set()); // ids expanded for JSON viewer
   const [copiedId, setCopiedId] = useState(null);
   const [dateWiseData, setDateWiseData] = useState([]);
+
+  // Fetch data on component mount and when dates change
+  useEffect(() => {
+    if (startDate && endDate) {
+      handleSearch();
+    }
+  }, [startDate, endDate]);
 
   const [apiData, setApiData] = useState([
     { sl: 1, api: "from_visit", usage: 0 },
@@ -101,7 +124,7 @@ const DashboardPage = () => {
     }
   };
 
-  const formatDate = (iso) => {
+  const formatDateTime = (iso) => {
     try {
       return new Intl.DateTimeFormat(undefined, {
         year: "numeric",
@@ -126,8 +149,8 @@ const DashboardPage = () => {
 
   // Reset filters and UI state to defaults
   const handleReset = () => {
-    setStartDate("");
-    setEndDate("");
+    setStartDate(todayFormatted);
+    setEndDate(todayFormatted);
     setTotalCount(null);
     setLogData([]);
     setSalesData([]);
