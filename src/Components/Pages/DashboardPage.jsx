@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 
 import { Bars3Icon } from "@heroicons/react/24/outline";
@@ -16,8 +16,24 @@ import {
 const DashboardPage = () => {
   const [open, setOpen] = useState(false);
 
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  // Format date as YYYY-MM-DD
+  const formatDate = (date) => {
+    if (!date) return '';
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return ''; // handle invalid dates
+    
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}`;
+  };
+
+  const today = new Date();
+  const todayFormatted = formatDate(today);
+
+  const [startDate, setStartDate] = useState(todayFormatted);
+  const [endDate, setEndDate] = useState(todayFormatted);
   const [totalCount, setTotalCount] = useState(null);
   const [loading, setLoading] = useState(false);
   const [logData, setLogData] = useState([]);
@@ -31,6 +47,14 @@ const DashboardPage = () => {
   const [sortDir, setSortDir] = useState("desc"); // asc | desc
   const [expanded, setExpanded] = useState(new Set()); // ids expanded for JSON viewer
   const [copiedId, setCopiedId] = useState(null);
+  const [dateWiseData, setDateWiseData] = useState([]);
+
+  // Fetch data on component mount and when dates change
+  useEffect(() => {
+    if (startDate && endDate) {
+      handleSearch();
+    }
+  }, [startDate, endDate]);
 
   const [apiData, setApiData] = useState([
     { sl: 1, api: "from_visit", usage: 0 },
@@ -112,7 +136,7 @@ const DashboardPage = () => {
     }
   };
 
-  const formatDate = (iso) => {
+  const formatDateTime = (iso) => {
     try {
       return new Intl.DateTimeFormat(undefined, {
         year: "numeric",
@@ -137,8 +161,8 @@ const DashboardPage = () => {
 
   // Reset filters and UI state to defaults
   const handleReset = () => {
-    setStartDate("");
-    setEndDate("");
+    setStartDate(todayFormatted);
+    setEndDate(todayFormatted);
     setTotalCount(null);
     setLogData([]);
     setSalesData([]);
@@ -163,18 +187,17 @@ const DashboardPage = () => {
     setTotalCount(null);
     setLogData([]);
     setSalesData([]);
+    setDateWiseData([]);
     setApiData((prev) => prev.map((item) => ({ ...item, usage: 0 })));
     setPage(0);
 
     try {
       // We'll compute service-wise totals first to know accurate totals
 
-          // 2️⃣ Service-wise totals (for table)
+      // 2️⃣ Service-wise totals (for table)
       let grandTotal = 0;
       let totalForSelected = 0;
-      const updatedServiceData = [];
-      
-      for (const service of baseServices) {
+      for (const service of services) {
         const resService = await axios.get(
           "https://api.digigo.sbusiness.xyz/tracking-api/geo-location/v1/logs/data",
           {
@@ -561,6 +584,43 @@ const DashboardPage = () => {
           </BarChart>
         </ResponsiveContainer>
 
+        {/* Date-wise Graph */}
+        {dateWiseData.length > 0 && (
+          <div className="mt-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h4 className="text-xl font-bold mb-6 text-gray-800">
+              {selectedService === 'tracking_services' ? 'All Services' : humanizeService(selectedService)} - Daily Usage
+            </h4>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={dateWiseData}
+                  margin={{
+                    top: 5,
+                    right: 30,
+                    left: 20,
+                    bottom: 5,
+                  }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    dataKey="date" 
+                    angle={-45}
+                    textAnchor="end"
+                    height={60}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <YAxis />
+                  <Tooltip 
+                    formatter={(value) => [`${value} calls`, 'Count']}
+                    labelFormatter={(label) => `Date: ${label}`}
+                  />
+                  <Bar dataKey="count" name="API Calls" fill="#0a0a5b" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
         {/* Daily hits chart for the filtered date range — Added by Mir Javed Jahanger */}
         {dailyData.length > 0 && (
           <div className="mt-8">
@@ -634,7 +694,6 @@ const DashboardPage = () => {
                 <table className="min-w-full text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#070742] to-[#13137a] text-white">
                     <tr>
-                      <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">SL</th>
                       <th onClick={() => toggleSort('id')} className="px-4 py-3 text-xs font-semibold uppercase tracking-wide cursor-pointer select-none">
                         ID {sortKey==='id' && (sortDir==='asc' ? '▲' : '▼')}
                       </th>
@@ -654,10 +713,7 @@ const DashboardPage = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {/* Changed by Mir Javed Jahanger: Client-side pagination slice */}
-                    {sortedLogs
-                      .slice(page * limit, (page + 1) * limit)
-                      .map((item, idx) => {
+                    {sortedLogs.map((item) => {
                       let parsedLog = {};
                       try { parsedLog = JSON.parse(item.log || "{}"); } catch {}
                       const address = parsedLog.address || "N/A";
@@ -665,11 +721,6 @@ const DashboardPage = () => {
                       return (
                         <React.Fragment key={item.id}>
                           <tr className="even:bg-slate-50 transition hover:bg-indigo-50">
-                            <td className="px-4 py-3 align-top">
-                              <span className="font-mono text-xs bg-slate-100 rounded px-2 py-1 border border-slate-200 text-slate-700">
-                                {page * limit + idx + 1} {/* SL — Changed by Mir Javed Jahanger */}
-                              </span>
-                            </td>
                             <td className="px-4 py-3 align-top">
                               <span className="font-mono text-xs bg-slate-100 rounded px-2 py-1 border border-slate-200 text-slate-700">
                                 {item.id}

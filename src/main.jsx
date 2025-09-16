@@ -13,6 +13,7 @@ import "./index.css";
 import CRUD from "./Components/Pages/CRUD.jsx";
 import Main from "./Components/Main.jsx";
 import DashboardPage from "./Components/Pages/DashboardPage.jsx";
+import Home from "./Components/Pages/Home.jsx";
 const router = createBrowserRouter([
   {
     path: "/",
@@ -42,10 +43,14 @@ const router = createBrowserRouter([
         path: "/",
         element: <DashboardPage></DashboardPage>,
       },
+      // {
+      //   path: "crud",
+      //   element: <CRUD></CRUD>,
+      // },
       {
-        path: "crud",
-        element: <CRUD></CRUD>,
-      },
+        path:"/home",
+        element: <Home></Home>,
+      }
     ],
   },
 ]);
