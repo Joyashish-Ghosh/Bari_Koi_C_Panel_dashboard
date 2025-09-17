@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import axios from "axios";
 
 import { Bars3Icon } from "@heroicons/react/24/outline";
@@ -15,25 +15,12 @@ import {
 
 const DashboardPage = () => {
   const [open, setOpen] = useState(false);
+const today = new Date().toISOString().split("T")[0];
 
-  // Format date as YYYY-MM-DD
-  const formatDate = (date) => {
-    if (!date) return '';
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return ''; // handle invalid dates
-    
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    
-    return `${year}-${month}-${day}`;
-  };
-
-  const today = new Date();
-  const todayFormatted = formatDate(today);
-
-  const [startDate, setStartDate] = useState(todayFormatted);
-  const [endDate, setEndDate] = useState(todayFormatted);
+// Default আজকের তারিখ সেট করা
+const [startDate, setStartDate] = useState(today);
+const [endDate, setEndDate] = useState(today);
+ 
   const [totalCount, setTotalCount] = useState(null);
   const [loading, setLoading] = useState(false);
   const [logData, setLogData] = useState([]);
@@ -42,18 +29,10 @@ const DashboardPage = () => {
   const [limit, setLimit] = useState(100);
   const [selectedService, setSelectedService] = useState("tracking_services");
   const [filterService, setFilterService] = useState("");
-  const [sortKey, setSortKey] = useState("id"); // id | service_name | address | created_by_name | created_at
-  const [sortDir, setSortDir] = useState("desc"); // asc | desc
-  const [expanded, setExpanded] = useState(new Set()); // ids expanded for JSON viewer
+  const [sortKey, setSortKey] = useState("id"); 
+  const [sortDir, setSortDir] = useState("desc"); 
+  const [expanded, setExpanded] = useState(new Set()); 
   const [copiedId, setCopiedId] = useState(null);
-  const [dateWiseData, setDateWiseData] = useState([]);
-
-  // Fetch data on component mount and when dates change
-  useEffect(() => {
-    if (startDate && endDate) {
-      handleSearch();
-    }
-  }, [startDate, endDate]);
 
   const [apiData, setApiData] = useState([
     { sl: 1, api: "from_visit", usage: 0 },
@@ -124,7 +103,7 @@ const DashboardPage = () => {
     }
   };
 
-  const formatDateTime = (iso) => {
+  const formatDate = (iso) => {
     try {
       return new Intl.DateTimeFormat(undefined, {
         year: "numeric",
@@ -149,8 +128,8 @@ const DashboardPage = () => {
 
   // Reset filters and UI state to defaults
   const handleReset = () => {
-    setStartDate(todayFormatted);
-    setEndDate(todayFormatted);
+    setStartDate(today);
+    setEndDate(today);
     setTotalCount(null);
     setLogData([]);
     setSalesData([]);
@@ -173,7 +152,6 @@ const DashboardPage = () => {
     setTotalCount(null);
     setLogData([]);
     setSalesData([]);
-    setDateWiseData([]);
     setApiData((prev) => prev.map((item) => ({ ...item, usage: 0 })));
 
     try {
@@ -233,67 +211,9 @@ const DashboardPage = () => {
         setSalesData([]);
       }
 
-      // 2️⃣ Service-wise totals (for table) and date-wise data
+      // 2️⃣ Service-wise totals (for table)
       let grandTotal = 0;
       let totalForSelected = 0;
-      
-      // Get the total count for the selected service and date range
-      const totalRes = await axios.get(
-        "https://api.digigo.sbusiness.xyz/tracking-api/geo-location/v1/logs/data",
-        {
-          params: {
-            business_id: "",
-            business_member_id: "",
-            skip: 0,
-            limit: 1, // We only need the total count
-            service_name: selectedService === 'tracking_services' ? '' : selectedService,
-            from_date: startDate,
-            to_date: endDate,
-          },
-        }
-      );
-
-      // Initialize date-wise data structure
-      const dateMap = new Map();
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      
-      // For single day selection, show the total count directly
-      if (startDate === endDate) {
-        const totalCount = totalRes.data?.data?.total || 0;
-        dateMap.set(startDate, totalCount);
-      } else {
-        // For date range, initialize all dates with 0
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-          const dateStr = d.toISOString().split('T')[0];
-          dateMap.set(dateStr, 0);
-        }
-
-        // If it's a range, we'll use the total count and distribute it evenly for visualization
-        // This is a fallback since we can't efficiently get exact daily counts for large date ranges
-        const totalCount = totalRes.data?.data?.total || 0;
-        const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
-        const avgPerDay = Math.round(totalCount / days);
-        
-        // Distribute the total count across the days
-        let remaining = totalCount;
-        const dates = Array.from(dateMap.keys());
-        for (let i = 0; i < dates.length; i++) {
-          const count = (i === dates.length - 1) ? remaining : avgPerDay;
-          dateMap.set(dates[i], count);
-          remaining -= count;
-        }
-      }
-      
-      // Convert map to array for the chart
-      const dateWiseArray = Array.from(dateMap.entries()).map(([date, count]) => ({
-        date,
-        count
-      })).sort((a, b) => new Date(a.date) - new Date(b.date));
-      
-      setDateWiseData(dateWiseArray);
-      
-      // Process service-wise totals
       for (const service of services) {
         const resService = await axios.get(
           "https://api.digigo.sbusiness.xyz/tracking-api/geo-location/v1/logs/data",
@@ -340,11 +260,9 @@ const DashboardPage = () => {
     }
   };
   // Add useEffect for page change
-  React.useEffect(() => {
-    if (startDate && endDate) {
-      handleSearch();
-    }
-  }, [page, selectedService, limit]);
+ React.useEffect(() => {
+  handleSearch(); // component mount e auto call
+}, [startDate, endDate, selectedService, page, limit]);
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -384,8 +302,9 @@ const DashboardPage = () => {
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-sm text-slate-500">Date Range</p>
-            <p className="mt-1 text-sm font-medium text-slate-800">{startDate || '—'} → {endDate || '—'}</p>
-          </div>
+<p className="mt-1 text-sm font-medium text-slate-800">
+  {(startDate ? new Date(startDate).toLocaleDateString() : '—')} → {(endDate ? new Date(endDate).toLocaleDateString() : '—')}
+</p>          </div>
         </div>
 
         {/* 1️⃣ DATE RANGE SEARCH */}
@@ -538,43 +457,6 @@ const DashboardPage = () => {
           </BarChart>
         </ResponsiveContainer>
 
-        {/* Date-wise Graph */}
-        {dateWiseData.length > 0 && (
-          <div className="mt-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-            <h4 className="text-xl font-bold mb-6 text-gray-800">
-              {selectedService === 'tracking_services' ? 'All Services' : humanizeService(selectedService)} - Daily Usage
-            </h4>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={dateWiseData}
-                  margin={{
-                    top: 5,
-                    right: 30,
-                    left: 20,
-                    bottom: 5,
-                  }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="date" 
-                    angle={-45}
-                    textAnchor="end"
-                    height={60}
-                    tick={{ fontSize: 12 }}
-                  />
-                  <YAxis />
-                  <Tooltip 
-                    formatter={(value) => [`${value} calls`, 'Count']}
-                    labelFormatter={(label) => `Date: ${label}`}
-                  />
-                  <Bar dataKey="count" name="API Calls" fill="#0a0a5b" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        )}
-
         {logData.length > 0 && (
           <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mt-8">
             <h4 className="text-xl font-bold mb-1 text-slate-800">API Hit Logs</h4>
@@ -619,9 +501,6 @@ const DashboardPage = () => {
                 <table className="min-w-full text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#070742] to-[#13137a] text-white">
                     <tr>
-                      <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">
-                        SL
-                      </th>
                       <th onClick={() => toggleSort('id')} className="px-4 py-3 text-xs font-semibold uppercase tracking-wide cursor-pointer select-none">
                         ID {sortKey==='id' && (sortDir==='asc' ? '▲' : '▼')}
                       </th>
@@ -641,7 +520,7 @@ const DashboardPage = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {sortedLogs.map((item, index) => {
+                    {sortedLogs.map((item) => {
                       let parsedLog = {};
                       try { parsedLog = JSON.parse(item.log || "{}"); } catch {}
                       const address = parsedLog.address || "N/A";
@@ -649,9 +528,6 @@ const DashboardPage = () => {
                       return (
                         <React.Fragment key={item.id}>
                           <tr className="even:bg-slate-50 transition hover:bg-indigo-50">
-                            <td className="px-4 py-3 text-center text-slate-700 font-medium">
-                              {index + 1 + (page * limit)}
-                            </td>
                             <td className="px-4 py-3 align-top">
                               <span className="font-mono text-xs bg-slate-100 rounded px-2 py-1 border border-slate-200 text-slate-700">
                                 {item.id}
