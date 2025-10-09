@@ -43,8 +43,8 @@ const DashboardPage = () => {
   const [selectedService, setSelectedService] = useState("tracking_services");
   const [filterService, setFilterService] = useState("");
   const [sortKey, setSortKey] = useState("id"); // id | service_name | address | created_by_name | created_at
-  const [sortDir, setSortDir] = useState("desc"); // asc | desc
-  const [expanded, setExpanded] = useState(new Set()); // ids expanded for JSON viewer
+  const [sortDir, setSortDir] = useState("desc"); 
+  const [expanded, setExpanded] = useState(new Set()); 
   const [copiedId, setCopiedId] = useState(null);
   const [dateWiseData, setDateWiseData] = useState([]);
 
@@ -64,11 +64,12 @@ const DashboardPage = () => {
   ]);
 
   const services = [
+    "tracking_services",
     "from_visit",
     "from_attendance",
     "from_tracking",
     "from_web",
-    "tracking_services",
+    
   ];
   // Derived logs for current filter
   const filteredLogs = logData.filter((item) => {
@@ -269,7 +270,6 @@ const DashboardPage = () => {
           dateMap.set(dateStr, 0);
         }
 
-        // If it's a range, we'll use the total count and distribute it evenly for visualization
         // This is a fallback since we can't efficiently get exact daily counts for large date ranges
         const totalCount = totalRes.data?.data?.total || 0;
         const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
@@ -321,7 +321,7 @@ const DashboardPage = () => {
           )
         );
       }
-      // If "All Services" is selected (tracking_services), show aggregated sum.
+     
       // Otherwise, show the selected service total so it matches the usage table.
       if (selectedService === "tracking_services") {
         setTotalCount(grandTotal);
@@ -379,12 +379,14 @@ const DashboardPage = () => {
             <p className="mt-1 text-2xl font-semibold text-emerald-700">{totalCount ?? 0}</p>
           </div> */}
           
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-sm text-slate-500">Selected Service</p>
-            <p className="mt-1 text-lg font-medium text-slate-800">{humanizeService(selectedService)}</p>
+          <div className="gap-10 bg-gradient-to-r from-slate-50 to-slate-100 shadow-inner rounded-xl px-5 py-3 text-center border border-slate-200">
+             <p className="text-sm font-bold text-slate-800 uppercase tracking-wide">
+Service Name</p>
+             <p className="mt-1 text-xl font-bold text-[#0a0a5b]">{humanizeService(selectedService)}</p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-sm text-slate-500">Date Range</p>
+          <div className="gap-10 bg-gradient-to-r from-slate-50 to-slate-100 shadow-inner rounded-xl px-5 py-3 text-center border border-slate-200">
+           <p className="text-sm font-bold text-slate-800 uppercase tracking-wide">
+Date Range</p>
             <p className="mt-1 text-sm font-medium text-slate-800">{startDate || '—'} → {endDate || '—'}</p>
           </div>
           <div className="gap-10 bg-gradient-to-r from-slate-50 to-slate-100 shadow-inner rounded-xl px-5 py-3 text-center border border-slate-200">
@@ -434,22 +436,6 @@ const DashboardPage = () => {
               Reset
             </button>
           </div>
-
-          {/* Total Count */}
-          {/* {loading ? (
-            <div className="flex justify-center mt-2">
-              <p className="text-gray-500">Loading...</p>
-            </div>
-          ) : totalCount !== null ? (
-            <div className="gap-10 bg-gradient-to-r from-slate-50 to-slate-100 shadow-inner rounded-lg px-5 py-3 text-center border border-slate-200">
-              <h3 className="text-xl font-bold text-slate-800 uppercase tracking-wide">
-                Total Count 
-              </h3>
-              <p className="text-2xl font-bold text-[#0a0a5b] mt-1">
-                {totalCount}
-              </p>
-            </div>
-          ) : null} */}
         </div>
 
         {/* 2️⃣ API USAGE TABLE */}
@@ -482,7 +468,10 @@ const DashboardPage = () => {
                   <td className="px-6 py-3 text-gray-800 font-medium">
                     {row.sl}
                   </td>
-                  <td className="px-6 py-3 text-gray-800">{row.api}</td>
+                  <td className="px-6 py-3 text-gray-800">{row.api
+                     .replace(/^from_/, "")              // remove 'from_' prefix
+          .replace(/_/g, " ")                 // replace underscores with space
+          .replace(/\b\w/g, (c) => c.toUpperCase()) }</td>
                   <td className="px-6 py-3 text-gray-800 font-semibold">
                     {row.usage} calls
                   </td>
@@ -548,7 +537,7 @@ const DashboardPage = () => {
         </ResponsiveContainer>
 
         {/* Date-wise Graph */}
-        {dateWiseData.length > 0 && (
+        {/* {dateWiseData.length > 0 && (
           <div className="mt-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
             <h4 className="text-xl font-bold mb-6 text-gray-800">
               {selectedService === 'tracking_services' ? 'All Services' : humanizeService(selectedService)} - Daily Usage
@@ -582,7 +571,7 @@ const DashboardPage = () => {
               </ResponsiveContainer>
             </div>
           </div>
-        )}
+        )} */}
 
         {logData.length > 0 && (
           <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mt-8">
@@ -603,7 +592,7 @@ const DashboardPage = () => {
                 }}
                 className="border border-slate-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0a0a5b]"
               >
-                <option value="">All Services</option>
+                {/* <option value="">All Services</option> */}
                 {services.map((s) => (
                   <option key={s} value={s}>
                     {humanizeService(s)}

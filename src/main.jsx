@@ -47,10 +47,10 @@ const router = createBrowserRouter([
       //   path: "crud",
       //   element: <CRUD></CRUD>,
       // },
-      {
-        path:"/home",
-        element: <Home></Home>,
-      }
+      // {
+      //   path:"/home",
+      //   element: <Home></Home>,
+      // }
     ],
   },
 ]);
